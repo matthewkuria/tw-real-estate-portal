@@ -31,7 +31,7 @@ class User(AbstractUser):
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
-        default=Status.ACTIVE,
+        default=Status.PENDING,
         db_index=True,
     )
 
@@ -65,38 +65,19 @@ class MemberProfile(models.Model):
         User,
         on_delete=models.CASCADE,
         related_name="member_profile",
+    )   
+    name = models.CharField(
+        max_length=255,
     )
 
-    national_id = models.CharField(
+    phone_number = models.CharField(
         max_length=20,
         blank=True,
     )
-
-    postal_address = models.CharField(
-        max_length=255,
+    plot_number = models.CharField(
+        max_length=50,
         blank=True,
     )
-
-    physical_address = models.CharField(
-        max_length=255,
-        blank=True,
-    )
-
-    city = models.CharField(
-        max_length=100,
-        blank=True,
-    )
-
-    county = models.CharField(
-        max_length=100,
-        blank=True,
-    )
-
-    date_of_birth = models.DateField(
-        null=True,
-        blank=True,
-    )
-
     created_at = models.DateTimeField(
         auto_now_add=True,
     )

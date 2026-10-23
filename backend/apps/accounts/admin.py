@@ -103,9 +103,8 @@ class CustomUserAdmin(UserAdmin):
 class MemberProfileAdmin(admin.ModelAdmin):
     list_display = (
         "user",
-        "national_id",
-        "city",
-        "county",
+        "phone_number",
+        "plot_number",
         "created_at",
     )
 
@@ -113,12 +112,8 @@ class MemberProfileAdmin(admin.ModelAdmin):
         "user__email",
         "user__first_name",
         "user__last_name",
-        "national_id",
-    )
-
-    list_filter = (
-        "county",
-        "city",
-    )
+        "phone_number",
+        "plot_number",
+    )   
 
     ordering = ("-created_at",)
