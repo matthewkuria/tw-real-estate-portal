@@ -34,11 +34,7 @@ class User(AbstractUser):
         default=Status.PENDING,
         db_index=True,
     )
-
-    phone_number = models.CharField(
-        max_length=20,
-        blank=True,
-    )
+   
 
     approved_at = models.DateTimeField(
         null=True,
@@ -73,11 +69,7 @@ class MemberProfile(models.Model):
     phone_number = models.CharField(
         max_length=20,
         blank=True,
-    )
-    plot_number = models.CharField(
-        max_length=50,
-        blank=True,
-    )
+    )   
     created_at = models.DateTimeField(
         auto_now_add=True,
     )

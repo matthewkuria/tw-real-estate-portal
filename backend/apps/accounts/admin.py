@@ -29,7 +29,6 @@ class CustomUserAdmin(UserAdmin):
         "email",
         "first_name",
         "last_name",
-        "phone_number",
     )
 
     ordering = ("email",)
@@ -42,7 +41,6 @@ class CustomUserAdmin(UserAdmin):
                 "fields": (
                     "first_name",
                     "last_name",
-                    "phone_number",
                 )
             },
         ),
@@ -90,7 +88,6 @@ class CustomUserAdmin(UserAdmin):
                     "password2",
                     "first_name",
                     "last_name",
-                    "phone_number",
                     "role",
                     "status",
                     "is_staff",
@@ -104,7 +101,6 @@ class MemberProfileAdmin(admin.ModelAdmin):
     list_display = (
         "user",
         "phone_number",
-        "plot_number",
         "created_at",
     )
 
@@ -113,7 +109,6 @@ class MemberProfileAdmin(admin.ModelAdmin):
         "user__first_name",
         "user__last_name",
         "phone_number",
-        "plot_number",
     )   
 
     ordering = ("-created_at",)
