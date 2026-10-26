@@ -4,7 +4,6 @@ from .managers import UserManager
 
 
 class User(AbstractUser):
-    objects = UserManager()
     class Role(models.TextChoices):
         SUPER_ADMIN = "SUPER_ADMIN", "Super Admin"
         ADMIN = "ADMIN", "Admin"
@@ -34,7 +33,6 @@ class User(AbstractUser):
         default=Status.PENDING,
         db_index=True,
     )
-   
 
     approved_at = models.DateTimeField(
         null=True,
@@ -49,27 +47,30 @@ class User(AbstractUser):
         auto_now=True,
     )
 
+    objects = UserManager()
+
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
+
+    class Meta:
+        ordering = ["-created_at"]
 
     def __str__(self):
         return self.email
 
-# The members
+
 class MemberProfile(models.Model):
     user = models.OneToOneField(
         User,
         on_delete=models.CASCADE,
         related_name="member_profile",
-    )   
-    name = models.CharField(
-        max_length=255,
     )
 
     phone_number = models.CharField(
         max_length=20,
         blank=True,
-    )   
+    )
+
     created_at = models.DateTimeField(
         auto_now_add=True,
     )
@@ -77,6 +78,9 @@ class MemberProfile(models.Model):
     updated_at = models.DateTimeField(
         auto_now=True,
     )
+
+    class Meta:
+        ordering = ["-created_at"]
 
     def __str__(self):
         return f"{self.user.email} Profile"

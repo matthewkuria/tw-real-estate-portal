@@ -36,8 +36,8 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault("is_active", True)
 
         # Portal-specific fields
-        extra_fields.setdefault("role", "SUPER_ADMIN")
-        extra_fields.setdefault("status", "ACTIVE")
+        extra_fields.setdefault("role", self.model.Role.SUPER_ADMIN)
+        extra_fields.setdefault("status", self.model.Status.ACTIVE)
 
         if extra_fields.get("is_staff") is not True:
             raise ValueError("Superuser must have is_staff=True.")

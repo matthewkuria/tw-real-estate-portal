@@ -36,8 +36,8 @@ INSTALLED_APPS = [
     # Rest Framework and DRF Spectacular for API documentation
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'drf_spectacular',
-    
 ]
 
 REST_FRAMEWORK = {
@@ -80,7 +80,14 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "AUTH_HEADER_TYPES": ("Bearer",),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
 }
+
+# Next.js frontend, used to build links sent in emails (e.g. password reset)
+FRONTEND_URL = "http://localhost:3000"
+PASSWORD_RESET_PATH = "/reset-password"
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',

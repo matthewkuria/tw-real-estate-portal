@@ -1,5 +1,9 @@
 from django.contrib.auth import authenticate, password_validation
+from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode
 from rest_framework import serializers
 
 from .models import User, MemberProfile
@@ -17,6 +21,13 @@ class RegistrationSerializer(serializers.ModelSerializer):
         style={"input_type": "password"},
     )
 
+    phone_number = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+        max_length=20,
+    )
+
     class Meta:
         model = User
         fields = (
@@ -29,7 +40,16 @@ class RegistrationSerializer(serializers.ModelSerializer):
         )
 
     def validate_email(self, value):
-        return value.strip().lower()
+        value = value.strip().lower()
+
+        # The model's unique check runs before this lowercasing, so it
+        # misses duplicates that differ only by case.
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError(
+                "A user with this email already exists."
+            )
+
+        return value
 
     def validate(self, attrs):
         password = attrs.get("password")
@@ -49,17 +69,24 @@ class RegistrationSerializer(serializers.ModelSerializer):
 
         return attrs
 
+    @transaction.atomic
     def create(self, validated_data):
-        return User.objects.create_user(
+        user = User.objects.create_user(
             email=validated_data["email"],
             password=validated_data["password"],
             first_name=validated_data.get("first_name", ""),
             last_name=validated_data.get("last_name", ""),
-            phone_number=validated_data.get("phone_number", ""),
             role=User.Role.MEMBER,
             status=User.Status.PENDING,
             is_active=False,
         )
+
+        MemberProfile.objects.create(
+            user=user,
+            phone_number=validated_data.get("phone_number", ""),
+        )
+
+        return user
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -70,7 +97,6 @@ class UserSerializer(serializers.ModelSerializer):
             "email",
             "first_name",
             "last_name",
-            "phone_number",
             "role",
             "status",
             "approved_at",
@@ -96,7 +122,6 @@ class MeSerializer(serializers.ModelSerializer):
             "email",
             "first_name",
             "last_name",
-            "phone_number",
             "role",
             "status",
             "approved_at",
@@ -133,22 +158,27 @@ class LoginResponseSerializer(serializers.Serializer):
     data = LoginDataSerializer()
 
 
+class TokenPairSerializer(serializers.Serializer):
+    access = serializers.CharField()
+    refresh = serializers.CharField()
+
+
+class ChangePasswordResponseSerializer(serializers.Serializer):
+    success = serializers.BooleanField()
+    code = serializers.CharField()
+    description = serializers.CharField()
+    data = TokenPairSerializer()
+
+
 class MemberProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = MemberProfile
         fields = (
-            "id",
-            "national_id",
-            "postal_address",
-            "physical_address",
-            "city",
-            "county",
-            "date_of_birth",
+            "phone_number",
             "created_at",
             "updated_at",
         )
         read_only_fields = (
-            "id",
             "created_at",
             "updated_at",
         )
@@ -162,7 +192,6 @@ class MemberAdminSerializer(serializers.ModelSerializer):
             "email",
             "first_name",
             "last_name",
-            "phone_number",
             "role",
             "status",
             "is_active",
@@ -179,6 +208,69 @@ class MemberAdminSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
+
+
+class LogoutSerializer(serializers.Serializer):
+    refresh = serializers.CharField()
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        return value.strip().lower()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+
+    new_password = serializers.CharField(
+        write_only=True,
+        min_length=8,
+        style={"input_type": "password"},
+    )
+
+    new_password_confirmation = serializers.CharField(
+        write_only=True,
+        style={"input_type": "password"},
+    )
+
+    def validate(self, attrs):
+        try:
+            user_id = force_str(urlsafe_base64_decode(attrs["uid"]))
+            user = User.objects.get(pk=user_id)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            user = None
+
+        if user is None or not default_token_generator.check_token(
+            user,
+            attrs["token"],
+        ):
+            raise serializers.ValidationError(
+                {"token": "This password reset link is invalid or has expired."}
+            )
+
+        if attrs["new_password"] != attrs["new_password_confirmation"]:
+            raise serializers.ValidationError(
+                {
+                    "new_password_confirmation":
+                        "Passwords do not match."
+                }
+            )
+
+        try:
+            password_validation.validate_password(
+                attrs["new_password"],
+                user,
+            )
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(
+                {"new_password": list(exc.messages)}
+            )
+
+        attrs["user"] = user
+        return attrs
 
 
 class ChangePasswordSerializer(serializers.Serializer):
