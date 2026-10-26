@@ -5,6 +5,7 @@ from django.db import transaction
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 
 from .models import User, MemberProfile
 
@@ -208,6 +209,35 @@ class MemberAdminSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
+
+    def validate(self, attrs):
+        editor = self.context["request"].user
+        target = self.instance
+        is_super_admin = editor.role == User.Role.SUPER_ADMIN
+
+        if (
+            target is not None
+            and target.role == User.Role.SUPER_ADMIN
+            and not is_super_admin
+        ):
+            raise PermissionDenied(
+                "Only Super Admins can edit a Super Admin account."
+            )
+
+        new_role = attrs.get("role")
+
+        if target is not None and new_role and new_role != target.role:
+            if not is_super_admin:
+                raise PermissionDenied(
+                    "Only Super Admins can change roles."
+                )
+
+            if target.pk == editor.pk:
+                raise PermissionDenied(
+                    "You cannot change your own role."
+                )
+
+        return attrs
 
 
 class LogoutSerializer(serializers.Serializer):

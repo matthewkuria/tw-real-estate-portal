@@ -1,6 +1,7 @@
 import re
 
 from django.core import mail
+from django.core.cache import cache
 from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
@@ -36,6 +37,10 @@ class AuthTestCase(APITestCase):
     Base class with helpers for signing in through the API.
     """
 
+    def setUp(self):
+        # Throttle counters live in the cache; start each test fresh.
+        cache.clear()
+
     def login(self, email, password=PASSWORD):
         return self.client.post(
             reverse("accounts:login"),
@@ -70,6 +75,9 @@ class AuthTestCase(APITestCase):
 @fast_hashing
 class RegistrationTests(APITestCase):
     url = reverse("accounts:register")
+
+    def setUp(self):
+        cache.clear()
 
     def payload(self, **overrides):
         data = {
@@ -301,6 +309,38 @@ class LogoutTests(AuthTestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.json()["code"], "E007")
+
+
+class ThrottlingTests(AuthTestCase):
+    def test_login_is_rate_limited(self):
+        make_user()
+
+        for _ in range(10):
+            self.login("member@example.com", "wrong-password")
+
+        response = self.login("member@example.com")
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
+    def test_password_reset_is_rate_limited(self):
+        url = reverse("accounts:password-reset")
+
+        for _ in range(5):
+            self.client.post(url, {"email": "a@example.com"}, format="json")
+
+        response = self.client.post(
+            url,
+            {"email": "a@example.com"},
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_429_TOO_MANY_REQUESTS,
+        )
 
 
 # ============================================================================
@@ -562,6 +602,11 @@ class PasswordResetTests(AuthTestCase):
 
 class MemberManagementTests(AuthTestCase):
     def setUp(self):
+        super().setUp()
+        self.super_admin = make_user(
+            email="super@example.com",
+            role=User.Role.SUPER_ADMIN,
+        )
         self.admin = make_user(email="admin@example.com", role=User.Role.ADMIN)
         self.manager = make_user(
             email="manager@example.com",
@@ -618,6 +663,55 @@ class MemberManagementTests(AuthTestCase):
         self.authenticate(self.admin)
         response = self.client.patch(url, {"first_name": "X"}, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def patch_user(self, user, data):
+        return self.client.patch(
+            reverse("accounts:user-detail", args=[user.pk]),
+            data,
+            format="json",
+        )
+
+    def test_admin_cannot_change_roles(self):
+        self.authenticate(self.admin)
+
+        for target in (self.member, self.admin):
+            with self.subTest(target=target.email):
+                response = self.patch_user(
+                    target,
+                    {"role": User.Role.SUPER_ADMIN},
+                )
+
+                self.assertEqual(
+                    response.status_code,
+                    status.HTTP_403_FORBIDDEN,
+                )
+                target.refresh_from_db()
+                self.assertNotEqual(target.role, User.Role.SUPER_ADMIN)
+
+    def test_admin_cannot_edit_super_admin(self):
+        self.authenticate(self.admin)
+
+        response = self.patch_user(self.super_admin, {"first_name": "X"})
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_super_admin_can_change_roles(self):
+        self.authenticate(self.super_admin)
+
+        response = self.patch_user(self.member, {"role": User.Role.MANAGER})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.role, User.Role.MANAGER)
+
+    def test_super_admin_cannot_change_own_role(self):
+        self.authenticate(self.super_admin)
+
+        response = self.patch_user(self.super_admin, {"role": User.Role.MEMBER})
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.super_admin.refresh_from_db()
+        self.assertEqual(self.super_admin.role, User.Role.SUPER_ADMIN)
 
     def test_approve_pending_member(self):
         self.authenticate(self.manager)
@@ -681,6 +775,7 @@ class MemberManagementTests(AuthTestCase):
 
 class MemberProfileManagementTests(AuthTestCase):
     def setUp(self):
+        super().setUp()
         self.member = make_user()
         self.profile = MemberProfile.objects.create(user=self.member)
         self.url = reverse("accounts:profile-detail", args=[self.profile.pk])

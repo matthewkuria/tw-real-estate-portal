@@ -1,19 +1,63 @@
+import os
+from datetime import timedelta
 from pathlib import Path
+
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# Quick-start development settings - unsuitable for production
+# Environment
+# Values come from real environment variables. For local development they
+# can also be put in backend/.env (git-ignored); see .env.example.
+
+def _load_env_file(path):
+    if not path.exists():
+        return
+
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
+
+def env(name, default=None):
+    return os.environ.get(name, default)
+
+
+def env_bool(name, default=False):
+    return env(name, str(default)).lower() in {"1", "true", "yes"}
+
+
+def env_list(name, default=""):
+    return [item.strip() for item in env(name, default).split(",") if item.strip()]
+
+
+_load_env_file(BASE_DIR / ".env")
+
+
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-e585+5a64(v3s#3$-k)^6gt@$(yk5c3p+%v@6(%ti)(txtntz2'
-
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env_bool("DJANGO_DEBUG")
 
-ALLOWED_HOSTS = []
+# SECURITY WARNING: keep the secret key used in production secret!
+# It also signs JWTs and password reset links.
+SECRET_KEY = env("DJANGO_SECRET_KEY")
+
+if not SECRET_KEY:
+    raise ImproperlyConfigured("Set the DJANGO_SECRET_KEY environment variable.")
+
+ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS")
+
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
 
 
 # Application definition
@@ -50,6 +94,14 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
+
+    # Per-IP limits for the public auth endpoints (ScopedRateThrottle).
+    "DEFAULT_THROTTLE_RATES": {
+        "login": "10/minute",
+        "register": "10/hour",
+        "password_reset": "5/hour",
+        "password_reset_confirm": "10/hour",
+    },
 }
 SPECTACULAR_SETTINGS = {
     "TITLE": "Real Estate Portal API",
@@ -74,8 +126,6 @@ SPECTACULAR_SETTINGS = {
         },
     },
 }
-from datetime import timedelta
-
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
@@ -85,7 +135,7 @@ SIMPLE_JWT = {
 }
 
 # Next.js frontend, used to build links sent in emails (e.g. password reset)
-FRONTEND_URL = "http://localhost:3000"
+FRONTEND_URL = env("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 PASSWORD_RESET_PATH = "/reset-password"
 
 MIDDLEWARE = [
@@ -169,8 +219,25 @@ STATIC_URL = 'static/'
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
-MAILERS = {
-    'default': {
-        'BACKEND': 'django.core.mail.backends.console.EmailBackend',
-    },
-}
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "webmaster@localhost")
+
+# Real SMTP when EMAIL_HOST is set, otherwise print emails to the console.
+if env("EMAIL_HOST"):
+    MAILERS = {
+        'default': {
+            'BACKEND': 'django.core.mail.backends.smtp.EmailBackend',
+            'OPTIONS': {
+                'host': env("EMAIL_HOST"),
+                'port': int(env("EMAIL_PORT", "587")),
+                'username': env("EMAIL_HOST_USER", ""),
+                'password': env("EMAIL_HOST_PASSWORD", ""),
+                'use_tls': env_bool("EMAIL_USE_TLS", True),
+            },
+        },
+    }
+else:
+    MAILERS = {
+        'default': {
+            'BACKEND': 'django.core.mail.backends.console.EmailBackend',
+        },
+    }
