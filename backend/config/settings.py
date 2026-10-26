@@ -63,6 +63,8 @@ if not DEBUG:
 # Application definition
 
 INSTALLED_APPS = [
+    # Must come before staticfiles so runserver serves ASGI (WebSockets).
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -77,6 +79,8 @@ INSTALLED_APPS = [
     'apps.audit',
     'apps.building_plans',
     'apps.properties',
+    'apps.community',
+    'channels',
     # Rest Framework and DRF Spectacular for API documentation
     'rest_framework',
     'rest_framework_simplejwt',
@@ -101,6 +105,8 @@ REST_FRAMEWORK = {
         "register": "10/hour",
         "password_reset": "5/hour",
         "password_reset_confirm": "10/hour",
+        # Per user: new forum threads and messages.
+        "forum_post": "30/minute",
     },
 }
 SPECTACULAR_SETTINGS = {
@@ -138,6 +144,9 @@ SIMPLE_JWT = {
 FRONTEND_URL = env("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 PASSWORD_RESET_PATH = "/reset-password"
 
+# Browser origins allowed to open WebSockets (the Next.js app).
+WEBSOCKET_ALLOWED_ORIGINS = env_list("WEBSOCKET_ALLOWED_ORIGINS", FRONTEND_URL)
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -166,6 +175,26 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = 'config.asgi.application'
+
+
+# WebSockets (Django Channels)
+# Redis is needed when running more than one server process; the in-memory
+# layer only delivers events within a single process.
+
+if env("REDIS_URL"):
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {"hosts": [env("REDIS_URL")]},
+        },
+    }
+else:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+        },
+    }
 
 
 # Database

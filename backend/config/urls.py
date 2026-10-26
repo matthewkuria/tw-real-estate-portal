@@ -16,6 +16,12 @@ urlpatterns = [
         include("apps.accounts.urls"),
     ),
 
+    # Community updates and forum
+    path(
+        "api/v1/community/",
+        include("apps.community.urls"),
+    ),
+
     # OpenAPI schema
     path(
         "api/schema/",
