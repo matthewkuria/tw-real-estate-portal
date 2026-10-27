@@ -25,13 +25,13 @@ def success(code, description, data=None, status_code=status.HTTP_200_OK):
     )
 
 
-def failure(code, description, status_code):
+def failure(code, description, status_code, data=None):
     return Response(
         {
             "success": False,
             "code": code,
             "description": description,
-            "data": None,
+            "data": data,
         },
         status=status_code,
     )

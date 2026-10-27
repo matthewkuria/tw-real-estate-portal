@@ -48,6 +48,12 @@ urlpatterns = [
         include("apps.advertisements.urls"),
     ),
 
+    # Service providers
+    path(
+        "api/v1/service-providers/",
+        include("apps.service_providers.urls"),
+    ),
+
     # OpenAPI schema
     path(
         "api/schema/",
