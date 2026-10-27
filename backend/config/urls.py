@@ -42,6 +42,12 @@ urlpatterns = [
         include("apps.newsletters.urls"),
     ),
 
+    # Advertisements
+    path(
+        "api/v1/ads/",
+        include("apps.advertisements.urls"),
+    ),
+
     # OpenAPI schema
     path(
         "api/schema/",

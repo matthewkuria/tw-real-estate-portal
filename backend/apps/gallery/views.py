@@ -12,6 +12,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import SAFE_METHODS, AllowAny, BasePermission
 
 from apps.accounts.models import User
+from apps.common.files import delete_files_after_commit
 from apps.common.responses import EnvelopeListMixin, envelope, page_of, success
 
 from .models import GalleryImage
@@ -33,20 +34,6 @@ class CanManageGallery(BasePermission):
 
     def has_permission(self, request, view):
         return is_gallery_admin(request.user)
-
-
-def delete_files_after_commit(*files):
-    """
-    Remove stored files once the database change is committed, so a
-    rollback never leaves a row pointing at a deleted file.
-    """
-    names = [(f.storage, f.name) for f in files if f]
-
-    def delete():
-        for storage, name in names:
-            storage.delete(name)
-
-    transaction.on_commit(delete)
 
 
 image_response = envelope("GalleryImageResponse", GalleryImageSerializer())

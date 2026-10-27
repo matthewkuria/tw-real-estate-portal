@@ -1,17 +1,9 @@
 from rest_framework import serializers
 
+from apps.common.fields import FormBooleanField
+
 from .models import GalleryImage
 from .processing import InvalidImage, process_upload
-
-
-class FormBooleanField(serializers.BooleanField):
-    """
-    DRF reads a boolean missing from form data as False (HTML checkbox
-    rules), so a multipart upload that leaves it out would silently set
-    it to False. Treat "missing" as "not given" so the default applies.
-    """
-
-    default_empty_html = serializers.empty
 
 
 class GalleryImageSerializer(serializers.ModelSerializer):

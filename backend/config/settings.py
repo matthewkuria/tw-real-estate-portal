@@ -81,6 +81,7 @@ INSTALLED_APPS = [
     'apps.community',
     'apps.gallery',
     'apps.newsletters',
+    'apps.advertisements',
     'channels',
     'corsheaders',
     # Rest Framework and DRF Spectacular for API documentation
@@ -125,6 +126,7 @@ SPECTACULAR_SETTINGS = {
     "ENUM_NAME_OVERRIDES": {
         "UserStatusEnum": "apps.accounts.models.User.Status",
         "NewsletterStatusEnum": "apps.newsletters.models.Newsletter.Status",
+        "AdvertisementCategoryEnum": "apps.advertisements.models.Advertisement.Category",
     },
 
     "SECURITY": [
