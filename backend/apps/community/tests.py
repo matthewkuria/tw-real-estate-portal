@@ -651,6 +651,17 @@ class WebSocketTests(CommunityFixtures, TransactionTestCase):
     def create_thread(self, **fields):
         return Thread.objects.create(author=self.resident, **fields)
 
+    async def next_event(self, communicator):
+        """
+        The next community event, skipping the user's own notification.*
+        events, which share the socket.
+        """
+        while True:
+            event = await communicator.receive_json_from()
+
+            if not event.get("type", "").startswith("notification."):
+                return event
+
     async def test_rejects_missing_or_invalid_token(self):
         for path in ("/ws/community/", "/ws/community/?token=garbage"):
             with self.subTest(path=path):
@@ -685,7 +696,7 @@ class WebSocketTests(CommunityFixtures, TransactionTestCase):
             {"title": "Estate A meeting", "body": "x", "estate": self.estate_a.pk},
         )
 
-        event = await resident.receive_json_from()
+        event = await self.next_event(resident)
         self.assertEqual(event["type"], "update.created")
         self.assertEqual(event["data"]["title"], "Estate A meeting")
         self.assertTrue(await outsider.receive_nothing())
@@ -698,7 +709,7 @@ class WebSocketTests(CommunityFixtures, TransactionTestCase):
         )
 
         for communicator in (resident, outsider):
-            event = await communicator.receive_json_from()
+            event = await self.next_event(communicator)
             self.assertEqual(event["data"]["title"], "For everyone")
 
         await resident.disconnect()
@@ -723,7 +734,7 @@ class WebSocketTests(CommunityFixtures, TransactionTestCase):
 
         events = {}
         for _ in range(2):
-            event = await viewer.receive_json_from()
+            event = await self.next_event(viewer)
             events[event["type"]] = event["data"]
 
         self.assertEqual(events["message.created"]["body"], "Live!")
@@ -748,7 +759,7 @@ class WebSocketTests(CommunityFixtures, TransactionTestCase):
             reverse("community:message-react", args=[message.pk]),
             {"emoji": "love"},
         )
-        event = await viewer.receive_json_from()
+        event = await self.next_event(viewer)
         self.assertEqual(event["type"], "reaction.updated")
         self.assertEqual(event["data"]["reactions"], {"love": 1})
 
@@ -757,7 +768,7 @@ class WebSocketTests(CommunityFixtures, TransactionTestCase):
             "delete",
             reverse("community:message-detail", args=[message.pk]),
         )
-        event = await viewer.receive_json_from()
+        event = await self.next_event(viewer)
         self.assertEqual(event["type"], "message.deleted")
         self.assertEqual(event["data"]["id"], message.pk)
 
@@ -798,7 +809,7 @@ class WebSocketTests(CommunityFixtures, TransactionTestCase):
 
         await communicator.send_json_to({"action": "explode"})
 
-        event = await communicator.receive_json_from()
+        event = await self.next_event(communicator)
         self.assertEqual(event, {"type": "error", "detail": "Unknown action."})
 
         await communicator.disconnect()

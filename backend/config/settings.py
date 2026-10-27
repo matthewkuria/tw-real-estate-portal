@@ -75,7 +75,6 @@ INSTALLED_APPS = [
     'apps.estates',
     'apps.accounts',
     'apps.notifications',
-    'apps.announcements',
     'apps.audit',
     'apps.building_plans',
     'apps.properties',

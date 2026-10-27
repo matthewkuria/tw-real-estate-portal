@@ -1,6 +1,8 @@
 from django.db import transaction
 from django.utils import timezone
 
+from apps.notifications import events as notification_events
+
 from .models import Message, Reaction, Thread
 from .realtime import audience_groups, broadcast, thread_group
 from .serializers import MessageSerializer, ThreadSerializer, UpdateSerializer
@@ -138,6 +140,8 @@ def post_message(thread, author, body, reply_to=None, *, as_moderator=False):
         },
     )
 
+    notification_events.message_posted(message)
+
     return message
 
 
@@ -186,7 +190,8 @@ def toggle_reaction(message, user, emoji):
     ).delete()
 
     if not deleted:
-        Reaction.objects.create(message=message, user=user, emoji=emoji)
+        reaction = Reaction.objects.create(message=message, user=user, emoji=emoji)
+        notification_events.reaction_added(reaction)
 
     message = Message.objects.prefetch_related("reactions").get(pk=message.pk)
 

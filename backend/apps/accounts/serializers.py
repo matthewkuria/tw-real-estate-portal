@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from django.contrib.auth import authenticate, password_validation
 from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -238,6 +240,57 @@ class MemberAdminSerializer(serializers.ModelSerializer):
                 )
 
         return attrs
+
+
+class DirectoryUnitSerializer(serializers.Serializer):
+    property = serializers.IntegerField(source="pk")
+    estate = serializers.IntegerField(source="estate_id")
+    estate_name = serializers.CharField(source="estate.name")
+    plot_number = serializers.CharField()
+
+
+class DirectoryEntrySerializer(serializers.ModelSerializer):
+    """
+    One person in the staff-only resident directory.
+    """
+
+    name = serializers.SerializerMethodField()
+    phone_number = serializers.SerializerMethodField()
+    role_label = serializers.CharField(source="get_role_display")
+    is_staff_member = serializers.SerializerMethodField()
+    member_since = serializers.SerializerMethodField()
+    units = DirectoryUnitSerializer(source="properties", many=True)
+
+    class Meta:
+        model = User
+        fields = (
+            "id",
+            "name",
+            "first_name",
+            "last_name",
+            "email",
+            "phone_number",
+            "role",
+            "role_label",
+            "is_staff_member",
+            "member_since",
+            "units",
+        )
+
+    def get_name(self, obj) -> str:
+        return obj.get_full_name() or obj.email
+
+    def get_phone_number(self, obj) -> str:
+        profile = getattr(obj, "member_profile", None)
+        return profile.phone_number if profile else ""
+
+    def get_is_staff_member(self, obj) -> bool:
+        return obj.role != User.Role.MEMBER
+
+    def get_member_since(self, obj) -> datetime:
+        # Members count from approval; staff (never "approved") from
+        # account creation.
+        return obj.approved_at or obj.created_at
 
 
 class LogoutSerializer(serializers.Serializer):

@@ -1,5 +1,5 @@
+from django.db import transaction
 from django.db.models import Count, Q
-from drf_spectacular.drainage import set_override
 from drf_spectacular.utils import (
     OpenApiParameter,
     extend_schema,
@@ -9,10 +9,17 @@ from drf_spectacular.utils import (
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
-from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import SAFE_METHODS, IsAuthenticated
-from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
+
+from apps.common.responses import (
+    EnvelopeListMixin,
+    envelope,
+    failure,
+    page_of,
+    success,
+)
+from apps.notifications import events as notification_events
 
 from . import services
 from .access import (
@@ -30,101 +37,6 @@ from .serializers import (
     ThreadSerializer,
     UpdateSerializer,
 )
-
-
-# ============================================================================
-# RESPONSES
-# ============================================================================
-# Same envelope as the accounts app:
-#     {"success": bool, "code": str, "description": str, "data": ...}
-
-def success(code, description, data=None, status_code=status.HTTP_200_OK):
-    return Response(
-        {
-            "success": True,
-            "code": code,
-            "description": description,
-            "data": data,
-        },
-        status=status_code,
-    )
-
-
-def failure(code, description, status_code):
-    return Response(
-        {
-            "success": False,
-            "code": code,
-            "description": description,
-            "data": None,
-        },
-        status=status_code,
-    )
-
-
-def envelope(name, data=None):
-    """
-    OpenAPI schema for an enveloped response. `data` is a serializer
-    instance, or None for responses without data.
-    """
-    schema = inline_serializer(
-        name=name,
-        fields={
-            "success": serializers.BooleanField(),
-            "code": serializers.CharField(),
-            "description": serializers.CharField(),
-            "data": data if data is not None else serializers.JSONField(allow_null=True),
-        },
-    )
-
-    # The envelope is always one object, even for list actions, which
-    # drf-spectacular would otherwise document as an array.
-    set_override(schema, "many", False)
-
-    return schema
-
-
-def page_of(name, item_serializer):
-    """
-    OpenAPI schema for the paginated list inside `data`.
-    """
-    return inline_serializer(
-        name=name,
-        fields={
-            "count": serializers.IntegerField(),
-            "next": serializers.URLField(allow_null=True),
-            "previous": serializers.URLField(allow_null=True),
-            "results": item_serializer(many=True),
-        },
-    )
-
-
-class CommunityPagination(PageNumberPagination):
-    page_size = 20
-    page_size_query_param = "page_size"
-    max_page_size = 100
-
-
-class EnvelopeListMixin:
-    """
-    Paginated list wrapped in the envelope; `data` holds count, next,
-    previous and results.
-
-    The paginator is used directly rather than through pagination_class,
-    so the API docs don't wrap the envelope in a second pagination layer.
-    """
-
-    list_code = None
-    list_description = None
-
-    def list(self, request, *args, **kwargs):
-        paginator = CommunityPagination()
-        queryset = self.filter_queryset(self.get_queryset())
-        page = paginator.paginate_queryset(queryset, request, view=self)
-        serializer = self.get_serializer(page, many=True)
-        data = paginator.get_paginated_response(serializer.data).data
-
-        return success(self.list_code, self.list_description, data)
 
 
 estate_filter = OpenApiParameter(
@@ -209,8 +121,10 @@ class UpdateViewSet(EnvelopeListMixin, viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        update = serializer.save(author=request.user)
-        services.announce_update(update, "update.created")
+        with transaction.atomic():
+            update = serializer.save(author=request.user)
+            services.announce_update(update, "update.created")
+            notification_events.update_posted(update)
 
         return success(
             "S015",

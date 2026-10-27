@@ -6,9 +6,11 @@ Group layout:
 - community.estate.<id>  members with a plot in that estate
 - community.staff        staff, who see every estate
 - thread.<id>            clients currently viewing that thread
+- user.<id>              every connection of one user (notifications)
 """
 
 import json
+import logging
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -16,8 +18,14 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 
 
+logger = logging.getLogger(__name__)
+
 ALL_GROUP = "community.all"
 STAFF_GROUP = "community.staff"
+
+
+def user_group(user_id):
+    return f"user.{user_id}"
 
 
 def estate_group(estate_id):
@@ -62,7 +70,13 @@ def broadcast(groups, event_type, data):
     message = {"type": "community.event", "payload": payload}
 
     def send():
+        # The data is already committed; a push failure (e.g. Redis down)
+        # must not turn the request into an error. Clients catch up via
+        # the REST API.
         for group in groups:
-            async_to_sync(channel_layer.group_send)(group, message)
+            try:
+                async_to_sync(channel_layer.group_send)(group, message)
+            except Exception:
+                logger.exception("Failed to push %s to %s", event_type, group)
 
     transaction.on_commit(send)

@@ -4,6 +4,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import (
     ChangePasswordView,
+    DirectoryView,
     LoginView,
     LogoutView,
     MemberProfileViewSet,
@@ -100,6 +101,12 @@ urlpatterns = [
     # =========================================================
     # Member management
     # =========================================================
+
+    path(
+        "directory/",
+        DirectoryView.as_view(),
+        name="directory",
+    ),
 
     path(
         "",

@@ -1,12 +1,17 @@
 from django.contrib.auth import update_session_auth_hash
+from django.db.models import Prefetch, Q
+from django.db.models.functions import Coalesce
 
 from drf_spectacular.utils import (
     OpenApiExample,
+    OpenApiParameter,
     OpenApiResponse,
     extend_schema,
 )
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
+from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
@@ -14,6 +19,9 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
+
+from apps.common.responses import EnvelopeListMixin, envelope, page_of
+from apps.properties.models import Property
 
 from .models import MemberProfile, User
 from .permissions import (
@@ -24,6 +32,7 @@ from .permissions import (
 from .serializers import (
     ChangePasswordResponseSerializer,
     ChangePasswordSerializer,
+    DirectoryEntrySerializer,
     LoginDataSerializer,
     LoginResponseSerializer,
     LoginSerializer,
@@ -727,3 +736,134 @@ class MemberProfileViewSet(viewsets.ModelViewSet):
             return [IsStaffRole()]
 
         return [IsSuperAdminOrAdmin()]
+
+# ============================================================================
+# RESIDENT DIRECTORY
+# ============================================================================
+
+DIRECTORY_ORDERINGS = {
+    "name": ("last_name", "first_name", "email"),
+    "-name": ("-last_name", "-first_name", "-email"),
+    "member_since": ("member_since_at", "last_name"),
+    "-member_since": ("-member_since_at", "last_name"),
+}
+
+
+@extend_schema(
+    summary="Resident directory",
+    description=(
+        "Staff-only searchable list of active residents and staff, with "
+        "their units and contact details.\n\n"
+        "`search` matches every word against name, email, phone number, "
+        "plot number and estate name, so `jane 14` finds Jane in plot 14."
+    ),
+    parameters=[
+        OpenApiParameter("search", str, description="Words to match."),
+        OpenApiParameter(
+            "estate",
+            int,
+            description="Only residents with a plot in this estate.",
+        ),
+        OpenApiParameter(
+            "role",
+            str,
+            enum=[choice for choice, _ in User.Role.choices],
+            description="Only people with this role.",
+        ),
+        OpenApiParameter(
+            "type",
+            str,
+            enum=["resident", "staff"],
+            description="Residents (members) only, or staff only.",
+        ),
+        OpenApiParameter(
+            "ordering",
+            str,
+            enum=list(DIRECTORY_ORDERINGS),
+            description="Default: name.",
+        ),
+    ],
+    responses={
+        200: envelope(
+            "DirectoryResponse",
+            page_of("DirectoryPage", DirectoryEntrySerializer),
+        ),
+    },
+)
+class DirectoryView(EnvelopeListMixin, GenericAPIView):
+    permission_classes = [IsStaffRole]
+    serializer_class = DirectoryEntrySerializer
+
+    list_code = "S039"
+    list_description = "Directory retrieved"
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return User.objects.none()
+
+        params = self.request.query_params
+
+        queryset = (
+            User.objects
+            .filter(status=User.Status.ACTIVE, is_active=True)
+            .select_related("member_profile")
+            .prefetch_related(
+                Prefetch(
+                    "properties",
+                    queryset=(
+                        Property.objects
+                        .select_related("estate")
+                        .order_by("estate__name", "plot_number")
+                    ),
+                ),
+            )
+            .annotate(member_since_at=Coalesce("approved_at", "created_at"))
+        )
+
+        for word in params.get("search", "").split():
+            queryset = queryset.filter(
+                Q(first_name__icontains=word)
+                | Q(last_name__icontains=word)
+                | Q(email__icontains=word)
+                | Q(member_profile__phone_number__icontains=word)
+                | Q(properties__plot_number__iexact=word)
+                | Q(properties__estate__name__icontains=word)
+            )
+
+        estate = params.get("estate")
+
+        if estate is not None:
+            if not estate.isdigit():
+                raise ValidationError({"estate": "Must be an estate id."})
+
+            queryset = queryset.filter(properties__estate_id=int(estate))
+
+        role = params.get("role")
+
+        if role is not None:
+            if role not in User.Role.values:
+                raise ValidationError({"role": "Unknown role."})
+
+            queryset = queryset.filter(role=role)
+
+        kind = params.get("type")
+
+        if kind == "resident":
+            queryset = queryset.filter(role=User.Role.MEMBER)
+        elif kind == "staff":
+            queryset = queryset.exclude(role=User.Role.MEMBER)
+        elif kind is not None:
+            raise ValidationError({"type": "Must be 'resident' or 'staff'."})
+
+        ordering = params.get("ordering", "name")
+
+        if ordering not in DIRECTORY_ORDERINGS:
+            raise ValidationError(
+                {"ordering": f"Must be one of: {', '.join(DIRECTORY_ORDERINGS)}."}
+            )
+
+        # Joins through plots can repeat a person; distinct() collapses them.
+        return queryset.distinct().order_by(*DIRECTORY_ORDERINGS[ordering])
+
+    def get(self, request, *args, **kwargs):
+        return self.list(request, *args, **kwargs)

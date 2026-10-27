@@ -2,8 +2,8 @@
 One WebSocket per signed-in user: ws/community/?token=<access JWT>
 
 On connect the client automatically receives update.* and thread.*
-events for everything it can see. To follow a thread's conversation it
-sends:
+events for everything it can see, plus its own notification.* events.
+To follow a thread's conversation it sends:
 
     {"action": "subscribe", "thread": 12}
     {"action": "unsubscribe", "thread": 12}
@@ -18,7 +18,13 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 from .access import member_estate_ids, sees_all_estates, visible_to
 from .models import Thread
-from .realtime import ALL_GROUP, STAFF_GROUP, estate_group, thread_group
+from .realtime import (
+    ALL_GROUP,
+    STAFF_GROUP,
+    estate_group,
+    thread_group,
+    user_group,
+)
 
 
 # Application close codes (4000-4999 are free for app use).
@@ -136,7 +142,7 @@ class CommunityConsumer(AsyncJsonWebsocketConsumer):
 
     @database_sync_to_async
     def _audience_groups(self):
-        groups = {ALL_GROUP}
+        groups = {ALL_GROUP, user_group(self.user.pk)}
 
         if sees_all_estates(self.user):
             groups.add(STAFF_GROUP)

@@ -22,6 +22,12 @@ urlpatterns = [
         include("apps.community.urls"),
     ),
 
+    # Notifications
+    path(
+        "api/v1/notifications/",
+        include("apps.notifications.urls"),
+    ),
+
     # OpenAPI schema
     path(
         "api/schema/",

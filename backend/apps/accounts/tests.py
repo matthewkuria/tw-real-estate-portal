@@ -818,3 +818,172 @@ class MemberProfileManagementTests(AuthTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.phone_number, "+254700000000")
+
+
+# ============================================================================
+# RESIDENT DIRECTORY
+# ============================================================================
+
+@fast_hashing
+class DirectoryTests(APITestCase):
+    url = reverse("accounts:directory")
+
+    def setUp(self):
+        from apps.estates.models import Estate
+        from apps.properties.models import Property
+
+        self.oak = Estate.objects.create(name="Oak Gardens", code="oak", location="Nairobi")
+        self.palm = Estate.objects.create(name="Palm View", code="palm", location="Mombasa")
+
+        self.manager = make_user(
+            email="manager@example.com",
+            role=User.Role.MANAGER,
+            first_name="Mary",
+            last_name="Manager",
+        )
+        self.jane = make_user(
+            email="jane@example.com",
+            first_name="Jane",
+            last_name="Achieng",
+        )
+        self.otieno = make_user(
+            email="otieno@example.com",
+            first_name="Peter",
+            last_name="Otieno",
+        )
+        make_user(
+            email="pending@example.com",
+            status=User.Status.PENDING,
+            is_active=False,
+        )
+
+        MemberProfile.objects.create(user=self.jane, phone_number="+254712000111")
+
+        def plot(estate, number, owner):
+            return Property.objects.create(
+                estate=estate,
+                plot_number=number,
+                price=1000,
+                required_deposit=100,
+                allocated_to=owner,
+                status=Property.Status.ALLOCATED,
+            )
+
+        plot(self.oak, "14", self.jane)
+        plot(self.palm, "3", self.jane)
+        plot(self.palm, "9", self.otieno)
+
+        self.client.force_authenticate(self.manager)
+
+    def get(self, **params):
+        response = self.client.get(self.url, params)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.json()["data"]
+
+    def emails(self, **params):
+        return [entry["email"] for entry in self.get(**params)["results"]]
+
+    def test_staff_only(self):
+        for user, expected in [
+            (make_user(email="finance@example.com", role=User.Role.FINANCE_OFFICER), status.HTTP_200_OK),
+            (self.jane, status.HTTP_403_FORBIDDEN),
+        ]:
+            with self.subTest(role=user.role):
+                self.client.force_authenticate(user)
+                self.assertEqual(self.client.get(self.url).status_code, expected)
+
+        self.client.force_authenticate(None)
+        self.assertEqual(
+            self.client.get(self.url).status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
+
+    def test_envelope_and_entry_shape(self):
+        response = self.client.get(self.url, {"search": "jane"})
+        body = response.json()
+
+        self.assertEqual(body["code"], "S039")
+        self.assertEqual(body["data"]["count"], 1)
+        self.assertEqual(
+            body["data"]["results"][0],
+            {
+                "id": self.jane.pk,
+                "name": "Jane Achieng",
+                "first_name": "Jane",
+                "last_name": "Achieng",
+                "email": "jane@example.com",
+                "phone_number": "+254712000111",
+                "role": "MEMBER",
+                "role_label": "Member",
+                "is_staff_member": False,
+                "member_since": body["data"]["results"][0]["member_since"],
+                "units": [
+                    {
+                        "property": self.jane.properties.get(plot_number="14").pk,
+                        "estate": self.oak.pk,
+                        "estate_name": "Oak Gardens",
+                        "plot_number": "14",
+                    },
+                    {
+                        "property": self.jane.properties.get(plot_number="3").pk,
+                        "estate": self.palm.pk,
+                        "estate_name": "Palm View",
+                        "plot_number": "3",
+                    },
+                ],
+            },
+        )
+        self.assertIsNotNone(body["data"]["results"][0]["member_since"])
+
+    def test_lists_active_residents_and_staff_by_name(self):
+        self.assertEqual(
+            self.emails(),
+            ["jane@example.com", "manager@example.com", "otieno@example.com"],
+        )
+
+    def test_staff_entry_has_badge_and_no_units(self):
+        entry = self.get(search="mary")["results"][0]
+
+        self.assertTrue(entry["is_staff_member"])
+        self.assertEqual(entry["role_label"], "Manager")
+        self.assertEqual(entry["units"], [])
+        self.assertEqual(entry["phone_number"], "")
+
+    def test_search_fields(self):
+        cases = {
+            "achieng": ["jane@example.com"],
+            "otieno@": ["otieno@example.com"],
+            "0111": ["jane@example.com"],
+            "palm": ["jane@example.com", "otieno@example.com"],
+            "9": ["otieno@example.com"],
+            "jane 14": ["jane@example.com"],
+            "jane 9": [],
+        }
+
+        for search, expected in cases.items():
+            with self.subTest(search=search):
+                self.assertEqual(self.emails(search=search), expected)
+
+    def test_filters(self):
+        self.assertEqual(self.emails(estate=self.oak.pk), ["jane@example.com"])
+        self.assertEqual(self.emails(type="staff"), ["manager@example.com"])
+        self.assertEqual(
+            self.emails(type="resident"),
+            ["jane@example.com", "otieno@example.com"],
+        )
+        self.assertEqual(self.emails(role="MANAGER"), ["manager@example.com"])
+
+    def test_no_duplicates_for_residents_with_several_plots(self):
+        self.assertEqual(self.get(search="palm")["count"], 2)
+
+    def test_ordering(self):
+        self.assertEqual(
+            self.emails(ordering="-name"),
+            ["otieno@example.com", "manager@example.com", "jane@example.com"],
+        )
+
+    def test_invalid_params(self):
+        for params in ({"estate": "x"}, {"role": "KING"}, {"type": "x"}, {"ordering": "x"}):
+            with self.subTest(params=params):
+                response = self.client.get(self.url, params)
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
