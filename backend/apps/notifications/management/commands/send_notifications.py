@@ -1,5 +1,6 @@
 import time
 
+from django.apps import apps
 from django.core.management.base import BaseCommand
 
 from apps.notifications.services import MAX_EMAIL_ATTEMPTS, send_pending_emails
@@ -7,8 +8,9 @@ from apps.notifications.services import MAX_EMAIL_ATTEMPTS, send_pending_emails
 
 class Command(BaseCommand):
     help = (
-        "Send queued notification emails. Run it on a schedule (e.g. cron "
-        "every minute), or with --loop as a long-running worker."
+        "Send queued emails (notifications and newsletters) and release "
+        "scheduled newsletters. Run it on a schedule (e.g. cron every "
+        "minute), or with --loop as a long-running worker."
     )
 
     def add_arguments(self, parser):
@@ -23,6 +25,15 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         while True:
+            # Scheduled newsletters whose time has come join the outbox.
+            if apps.is_installed("apps.newsletters"):
+                from apps.newsletters.services import release_due
+
+                released = release_due()
+
+                if released:
+                    self.stdout.write(f"Released {released} scheduled newsletter(s).")
+
             # Drain everything that's due before sleeping.
             while True:
                 sent, failed = send_pending_emails(

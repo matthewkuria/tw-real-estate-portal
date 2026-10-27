@@ -2,7 +2,7 @@ import logging
 from datetime import timedelta
 
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
 from django.utils import timezone
 
@@ -249,11 +249,30 @@ def _email_body(notification, can_opt_out):
     return "\n\n".join(parts)
 
 
+def deliver(email):
+    """
+    Hand one outbox row to the mail backend.
+    """
+    message = EmailMultiAlternatives(
+        subject=email.subject,
+        body=email.body,
+        from_email=None,
+        to=[email.to_email],
+        headers=email.headers or None,
+    )
+
+    if email.html_body:
+        message.attach_alternative(email.html_body, "text/html")
+
+    message.send()
+
+
 def send_pending_emails(batch_size=100, max_attempts=MAX_EMAIL_ATTEMPTS):
     """
-    Send one batch from the outbox. Failures are retried with exponential
-    backoff (2, 4, 8... minutes) and marked FAILED after `max_attempts`.
-    Safe to run from several workers at once on Postgres.
+    Send one batch from the outbox, transactional emails first. Failures
+    are retried with exponential backoff (2, 4, 8... minutes) and marked
+    FAILED after `max_attempts`. Safe to run from several workers at once
+    on Postgres.
 
     Returns (sent, failed) counts for this batch.
     """
@@ -270,7 +289,7 @@ def send_pending_emails(batch_size=100, max_attempts=MAX_EMAIL_ATTEMPTS):
             EmailOutbox.objects
             .select_for_update(skip_locked=True)
             .filter(status=EmailOutbox.Status.PENDING, next_attempt_at__lte=now)
-            .order_by("id")
+            .order_by("priority", "id")
             .values_list("pk", flat=True)[:batch_size]
         )
         EmailOutbox.objects.filter(pk__in=ids).update(
@@ -280,14 +299,9 @@ def send_pending_emails(batch_size=100, max_attempts=MAX_EMAIL_ATTEMPTS):
 
     sent = failed = 0
 
-    for email in EmailOutbox.objects.filter(pk__in=ids):
+    for email in EmailOutbox.objects.filter(pk__in=ids).order_by("priority", "id"):
         try:
-            send_mail(
-                subject=email.subject,
-                message=email.body,
-                from_email=None,
-                recipient_list=[email.to_email],
-            )
+            deliver(email)
         except Exception as exc:
             email.attempts += 1
             email.last_error = f"{type(exc).__name__}: {exc}"

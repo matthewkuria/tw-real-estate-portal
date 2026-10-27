@@ -528,7 +528,7 @@ class EmailWorkerTests(NotificationTestCase):
         email = self.queue()
 
         with mock.patch(
-            "apps.notifications.services.send_mail",
+            "apps.notifications.services.deliver",
             side_effect=SMTPException("server down"),
         ):
             send_pending_emails(max_attempts=2)

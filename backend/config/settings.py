@@ -80,6 +80,7 @@ INSTALLED_APPS = [
     'apps.properties',
     'apps.community',
     'apps.gallery',
+    'apps.newsletters',
     'channels',
     'corsheaders',
     # Rest Framework and DRF Spectacular for API documentation
@@ -108,6 +109,8 @@ REST_FRAMEWORK = {
         "password_reset_confirm": "10/hour",
         # Per user: new forum threads and messages.
         "forum_post": "30/minute",
+        # Per IP: the public newsletter unsubscribe link.
+        "newsletter_unsubscribe": "30/minute",
     },
 }
 SPECTACULAR_SETTINGS = {
@@ -116,6 +119,13 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
 
     "SERVE_INCLUDE_SCHEMA": False,
+
+    # Several models have a "status" field with different choices; give
+    # each its own name in the docs.
+    "ENUM_NAME_OVERRIDES": {
+        "UserStatusEnum": "apps.accounts.models.User.Status",
+        "NewsletterStatusEnum": "apps.newsletters.models.Newsletter.Status",
+    },
 
     "SECURITY": [
         {
@@ -144,6 +154,13 @@ SIMPLE_JWT = {
 # Next.js frontend, used to build links sent in emails (e.g. password reset)
 FRONTEND_URL = env("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 PASSWORD_RESET_PATH = "/reset-password"
+
+# Public URL of this API, for links that must reach the backend directly
+# (e.g. one-click unsubscribe from a mail app).
+API_BASE_URL = env("API_BASE_URL", "http://localhost:8000").rstrip("/")
+
+# Shown in newsletter emails.
+SITE_NAME = env("SITE_NAME", "Real Estate Portal")
 
 # Browser origins allowed to open WebSockets (the Next.js app).
 WEBSOCKET_ALLOWED_ORIGINS = env_list("WEBSOCKET_ALLOWED_ORIGINS", FRONTEND_URL)

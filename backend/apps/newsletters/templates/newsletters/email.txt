@@ -1,0 +1,7 @@
+{% autoescape off %}{{ body_text }}
+
+--
+You're receiving this because you're a member of {{ site_name }}.
+Unsubscribe: {{ unsubscribe_url }}
+View in the portal: {{ archive_url }}
+{% endautoescape %}

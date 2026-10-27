@@ -36,6 +36,12 @@ urlpatterns = [
         include("apps.gallery.urls"),
     ),
 
+    # Newsletters
+    path(
+        "api/v1/newsletters/",
+        include("apps.newsletters.urls"),
+    ),
+
     # OpenAPI schema
     path(
         "api/schema/",

@@ -83,7 +83,8 @@ class NotificationPreference(models.Model):
 
 class EmailOutbox(models.Model):
     """
-    Emails waiting to be sent by `manage.py send_notifications`.
+    Emails waiting to be sent by `manage.py send_notifications`. Used by
+    notifications and newsletters alike.
     """
 
     class Status(models.TextChoices):
@@ -91,6 +92,12 @@ class EmailOutbox(models.Model):
         SENDING = "SENDING", "Sending"
         SENT = "SENT", "Sent"
         FAILED = "FAILED", "Failed"
+
+    class Priority(models.IntegerChoices):
+        # Lower sends first, so a newsletter to every member never holds
+        # up an "account approved" email queued behind it.
+        TRANSACTIONAL = 0, "Transactional"
+        BULK = 10, "Bulk"
 
     notification = models.ForeignKey(
         Notification,
@@ -102,7 +109,18 @@ class EmailOutbox(models.Model):
 
     to_email = models.EmailField()
     subject = models.CharField(max_length=255)
+
+    # Plain text is always sent; HTML, when present, is the rich version.
     body = models.TextField()
+    html_body = models.TextField(blank=True)
+
+    # Extra headers, e.g. List-Unsubscribe for newsletters.
+    headers = models.JSONField(default=dict, blank=True)
+
+    priority = models.PositiveSmallIntegerField(
+        choices=Priority.choices,
+        default=Priority.TRANSACTIONAL,
+    )
 
     status = models.CharField(
         max_length=10,
@@ -123,6 +141,9 @@ class EmailOutbox(models.Model):
     class Meta:
         ordering = ["id"]
         verbose_name_plural = "email outbox"
+        indexes = [
+            models.Index(fields=["status", "priority", "next_attempt_at"]),
+        ]
 
     def __str__(self):
         return f"{self.subject} to {self.to_email} ({self.status})"
