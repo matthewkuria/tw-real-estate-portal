@@ -39,6 +39,11 @@ from .serializers import (
 )
 
 
+# Built once each: drf-spectacular warns about two schemas with one name.
+update_response = envelope("UpdateResponse", UpdateSerializer())
+message_response = envelope("MessageResponse", MessageSerializer())
+
+
 estate_filter = OpenApiParameter(
     "estate",
     int,
@@ -68,13 +73,13 @@ def filter_by_estate(queryset, request):
         responses={200: envelope("UpdateListResponse", page_of("UpdatePage", UpdateSerializer))},
     ),
     retrieve=extend_schema(
-        responses={200: envelope("UpdateResponse", UpdateSerializer())},
+        responses={200: update_response},
     ),
     create=extend_schema(
-        responses={201: envelope("UpdateResponse", UpdateSerializer())},
+        responses={201: update_response},
     ),
     partial_update=extend_schema(
-        responses={200: envelope("UpdateResponse", UpdateSerializer())},
+        responses={200: update_response},
     ),
     destroy=extend_schema(
         responses={200: envelope("EmptyResponse")},
@@ -359,7 +364,7 @@ class ThreadViewSet(
         methods=["POST"],
         summary="Post a message",
         request=MessageSerializer,
-        responses={201: envelope("MessageResponse", MessageSerializer())},
+        responses={201: message_response},
     )
     @action(detail=True, methods=["get", "post"])
     def messages(self, request, pk=None):
@@ -447,9 +452,6 @@ class ThreadViewSet(
 # ============================================================================
 # FORUM MESSAGES
 # ============================================================================
-
-message_response = envelope("MessageResponse", MessageSerializer())
-
 
 @extend_schema_view(
     retrieve=extend_schema(responses={200: message_response}),

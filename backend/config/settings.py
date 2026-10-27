@@ -79,7 +79,9 @@ INSTALLED_APPS = [
     'apps.building_plans',
     'apps.properties',
     'apps.community',
+    'apps.gallery',
     'channels',
+    'corsheaders',
     # Rest Framework and DRF Spectacular for API documentation
     'rest_framework',
     'rest_framework_simplejwt',
@@ -146,7 +148,14 @@ PASSWORD_RESET_PATH = "/reset-password"
 # Browser origins allowed to open WebSockets (the Next.js app).
 WEBSOCKET_ALLOWED_ORIGINS = env_list("WEBSOCKET_ALLOWED_ORIGINS", FRONTEND_URL)
 
+# Browser origins allowed to call the API (the portal and the public
+# website). Auth uses the Authorization header, not cookies, so no
+# credentials are allowed.
+CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", FRONTEND_URL)
+
 MIDDLEWARE = [
+    # As high as possible, so even error responses carry CORS headers.
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -242,6 +251,16 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = 'static/'
+
+
+# Uploaded files (gallery images)
+# Served by Django only when DEBUG is on; in production serve MEDIA_ROOT
+# from the web server or object storage, and point MEDIA_URL at it.
+
+MEDIA_URL = env("MEDIA_URL", "/media/")
+MEDIA_ROOT = Path(env("MEDIA_ROOT", str(BASE_DIR / "media")))
+
+GALLERY_MAX_UPLOAD_MB = int(env("GALLERY_MAX_UPLOAD_MB", "10"))
 
 
 # Email

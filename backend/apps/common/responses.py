@@ -37,11 +37,19 @@ def failure(code, description, status_code):
     )
 
 
+_data_less_envelopes = {}
+
+
 def envelope(name, data=None):
     """
     OpenAPI schema for an enveloped response. `data` is a serializer
     instance, or None for responses without data.
     """
+    # drf-spectacular warns when two different schemas share a name, so
+    # data-less envelopes (e.g. "EmptyResponse") are built once and reused.
+    if data is None and name in _data_less_envelopes:
+        return _data_less_envelopes[name]
+
     schema = inline_serializer(
         name=name,
         fields={
@@ -55,6 +63,9 @@ def envelope(name, data=None):
     # The envelope is always one object, even for list actions, which
     # drf-spectacular would otherwise document as an array.
     set_override(schema, "many", False)
+
+    if data is None:
+        _data_less_envelopes[name] = schema
 
     return schema
 
