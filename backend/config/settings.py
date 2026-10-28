@@ -83,6 +83,7 @@ INSTALLED_APPS = [
     'apps.newsletters',
     'apps.advertisements',
     'apps.service_providers',
+    'apps.rentals',
     'channels',
     'corsheaders',
     # Rest Framework and DRF Spectacular for API documentation

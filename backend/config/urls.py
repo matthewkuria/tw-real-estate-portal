@@ -54,6 +54,12 @@ urlpatterns = [
         include("apps.service_providers.urls"),
     ),
 
+    # Rented houses and tenants
+    path(
+        "api/v1/rentals/",
+        include("apps.rentals.urls"),
+    ),
+
     # OpenAPI schema
     path(
         "api/schema/",
