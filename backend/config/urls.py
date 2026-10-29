@@ -60,6 +60,12 @@ urlpatterns = [
         include("apps.rentals.urls"),
     ),
 
+    # Properties for sale or rent
+    path(
+        "api/v1/listings/",
+        include("apps.listings.urls"),
+    ),
+
     # OpenAPI schema
     path(
         "api/schema/",

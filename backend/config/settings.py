@@ -84,6 +84,7 @@ INSTALLED_APPS = [
     'apps.advertisements',
     'apps.service_providers',
     'apps.rentals',
+    'apps.listings',
     'channels',
     'corsheaders',
     # Rest Framework and DRF Spectacular for API documentation
@@ -131,6 +132,7 @@ SPECTACULAR_SETTINGS = {
         "AdvertisementCategoryEnum": "apps.advertisements.models.Advertisement.Category",
         "ServiceProviderCategoryEnum": "apps.service_providers.models.ServiceProvider.Category",
         "ServiceProviderStatusEnum": "apps.service_providers.models.ServiceProvider.Status",
+        "ListingStatusEnum": "apps.listings.models.PropertyListing.Status",
     },
 
     "SECURITY": [
