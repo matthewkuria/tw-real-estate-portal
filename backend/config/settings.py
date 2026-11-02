@@ -2,6 +2,7 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
+import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -55,9 +56,18 @@ if not SECRET_KEY:
 
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS")
 
+# Render sets this to the service's *.onrender.com hostname.
+if env("RENDER_EXTERNAL_HOSTNAME"):
+    ALLOWED_HOSTS.append(env("RENDER_EXTERNAL_HOSTNAME"))
+
 if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+
+    # Production runs behind a proxy that terminates HTTPS (e.g. Render)
+    # and sets this header, so Django builds https:// URLs. Only safe when
+    # that proxy overwrites any value a client sends.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 
 # Application definition
@@ -182,6 +192,8 @@ MIDDLEWARE = [
     # As high as possible, so even error responses carry CORS headers.
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    # Serves collected static files (admin, API docs) without a web server.
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -233,11 +245,17 @@ else:
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
+# DATABASE_URL (e.g. postgres://user:pass@host:5432/name) in production;
+# SQLite in backend/ when it's not set.
+# Persistent connections stay off by default: under ASGI each request may
+# run in its own thread, so kept-open connections pile up.
+
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.config(
+        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+        conn_max_age=int(env("DB_CONN_MAX_AGE", "0")),
+        conn_health_checks=True,
+    ),
 }
 
 
@@ -276,14 +294,56 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 
-# Uploaded files (gallery images)
-# Served by Django only when DEBUG is on; in production serve MEDIA_ROOT
-# from the web server or object storage, and point MEDIA_URL at it.
+# Uploaded files (gallery, ad, rental and listing images)
+# Two options:
+# - Local disk at MEDIA_ROOT (e.g. a mounted persistent disk). Django
+#   serves it when DEBUG or SERVE_MEDIA is on; fine for a small site.
+# - S3-compatible object storage (AWS S3, Cloudflare R2, ...), used when
+#   AWS_STORAGE_BUCKET_NAME is set. Files are served from the bucket.
 
 MEDIA_URL = env("MEDIA_URL", "/media/")
 MEDIA_ROOT = Path(env("MEDIA_ROOT", str(BASE_DIR / "media")))
+
+SERVE_MEDIA = env_bool("SERVE_MEDIA", DEBUG)
+
+if env("AWS_STORAGE_BUCKET_NAME"):
+    _media_storage = {
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": {
+            "bucket_name": env("AWS_STORAGE_BUCKET_NAME"),
+            "access_key": env("AWS_ACCESS_KEY_ID"),
+            "secret_key": env("AWS_SECRET_ACCESS_KEY"),
+            # Optional values are None when blank, as hosting dashboards
+            # often set unused variables to "".
+            # Set for R2, Supabase and other non-AWS providers.
+            "endpoint_url": env("AWS_S3_ENDPOINT_URL") or None,
+            "region_name": env("AWS_S3_REGION_NAME") or None,
+            # "path" for providers that don't support bucket subdomains
+            # (e.g. Supabase Storage).
+            "addressing_style": env("AWS_S3_ADDRESSING_STYLE") or None,
+            # Public host (and path) for file URLs, e.g. a CDN, an R2
+            # public domain or <ref>.supabase.co/storage/v1/object/public/<bucket>.
+            "custom_domain": env("AWS_S3_CUSTOM_DOMAIN") or None,
+            # Upload names are random, so never overwrite.
+            "file_overwrite": False,
+            # Public listing photos: plain URLs rather than expiring ones.
+            "querystring_auth": env_bool("AWS_QUERYSTRING_AUTH", False),
+        },
+    }
+else:
+    _media_storage = {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    }
+
+STORAGES = {
+    "default": _media_storage,
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
+    },
+}
 
 GALLERY_MAX_UPLOAD_MB = int(env("GALLERY_MAX_UPLOAD_MB", "10"))
 

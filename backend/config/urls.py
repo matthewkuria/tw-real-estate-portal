@@ -1,7 +1,7 @@
 from django.conf import settings
-from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import include, path, re_path
+from django.views.static import serve
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularSwaggerView,
@@ -88,6 +88,13 @@ urlpatterns = [
     ),
 ]
 
-# Uploaded media in development; production serves it from the web server.
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# Uploaded media kept on local disk (development, or a mounted disk in
+# production with SERVE_MEDIA on). Object storage serves its own files.
+if settings.SERVE_MEDIA and settings.MEDIA_URL.startswith("/"):
+    urlpatterns += [
+        re_path(
+            rf"^{settings.MEDIA_URL.strip('/')}/(?P<path>.*)$",
+            serve,
+            {"document_root": settings.MEDIA_ROOT},
+        ),
+    ]

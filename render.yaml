@@ -1,0 +1,102 @@
+# Render Blueprint (free plan): https://render.com/docs/blueprint-spec
+#
+# Creates the API. The database and uploaded images live in Supabase.
+# In the Render dashboard: New > Blueprint > pick this repo. Values marked
+# `sync: false` are asked for when the Blueprint is first applied.
+#
+# Free plan limits this setup works around:
+# - No background workers: the email sender runs inside the web service
+#   (backend/start.sh), so emails only go out while it's awake.
+# - No shell or pre-deploy step: backend/build.sh runs migrations and
+#   creates the first Super Admin from DJANGO_SUPERUSER_*.
+# - No disks, and local files vanish on restart: uploads go to
+#   S3-compatible storage (Supabase Storage here; R2 also works).
+# - The service sleeps after a while without traffic; the first request
+#   after that takes a while, and open WebSockets drop.
+# - Render's free databases expire, so Postgres is Supabase's. Free
+#   Supabase projects pause after about a week without activity; restore
+#   them from the Supabase dashboard.
+
+services:
+  - type: web
+    name: tw-portal-api
+    runtime: python
+    rootDir: backend
+    region: frankfurt
+    plan: free
+    buildCommand: bash build.sh
+    startCommand: bash start.sh
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.14.3
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+
+      # Supabase Postgres: Connect > Session pooler (port 5432) connection
+      # string, with the password filled in (URL-encode characters such as
+      # @ # / :) and ?sslmode=require on the end, e.g.
+      # postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+      # Not the direct connection (IPv6 only) or the transaction pooler
+      # (port 6543), which doesn't suit Django's connections.
+      - key: DATABASE_URL
+        sync: false
+
+      # First Super Admin, created on the first deploy only.
+      - key: DJANGO_SUPERUSER_EMAIL
+        sync: false
+      - key: DJANGO_SUPERUSER_PASSWORD
+        sync: false
+
+      # Public URL of this API, e.g. https://tw-portal-api.onrender.com.
+      # Newsletter unsubscribe links point here.
+      - key: API_BASE_URL
+        sync: false
+      # The Next.js portal; password reset emails link here.
+      - key: FRONTEND_URL
+        sync: false
+      # Comma-separated browser origins (portal and public website).
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: SITE_NAME
+        value: Real Estate Portal
+
+      # SMTP (Brevo, SendGrid, Mailgun, ...).
+      - key: DEFAULT_FROM_EMAIL
+        sync: false
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_PORT
+        value: "587"
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: EMAIL_USE_TLS
+        value: "True"
+
+      # Uploaded images in an S3-compatible bucket.
+      # Cloudflare R2:
+      #   endpoint:      https://<account-id>.r2.cloudflarestorage.com
+      #   region:        auto
+      #   custom domain: the bucket's public hostname (r2.dev or your own)
+      # Supabase Storage (public bucket; keys from Storage > S3 settings):
+      #   endpoint:      https://<ref>.supabase.co/storage/v1/s3
+      #   region:        the project's region, e.g. eu-central-1
+      #   addressing:    path
+      #   custom domain: <ref>.supabase.co/storage/v1/object/public/<bucket>
+      - key: AWS_STORAGE_BUCKET_NAME
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_S3_ENDPOINT_URL
+        sync: false
+      - key: AWS_S3_CUSTOM_DOMAIN
+        sync: false
+      - key: AWS_S3_REGION_NAME
+        sync: false
+      - key: AWS_S3_ADDRESSING_STYLE
+        sync: false
