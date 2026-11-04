@@ -20,6 +20,9 @@ class NotificationType(models.TextChoices):
     PAYMENT_REJECTED = "payment_rejected", "Payment rejected"
     PAYMENT_REVERSED = "payment_reversed", "Payment reversed"
 
+    PLOT_ALLOCATED = "plot_allocated", "Plot allocated to you"
+    PLOT_RELEASED = "plot_released", "Plot allocation ended"
+
 
 @dataclass(frozen=True)
 class EmailPolicy:
@@ -48,6 +51,8 @@ EMAIL_POLICY = {
     T.PAYMENT_CONFIRMED: _OPTIONAL_EMAIL,
     T.PAYMENT_REJECTED: _OPTIONAL_EMAIL,
     T.PAYMENT_REVERSED: _OPTIONAL_EMAIL,
+    T.PLOT_ALLOCATED: _OPTIONAL_EMAIL,
+    T.PLOT_RELEASED: _OPTIONAL_EMAIL,
 }
 
 assert set(EMAIL_POLICY) == set(NotificationType), "Every type needs a policy."

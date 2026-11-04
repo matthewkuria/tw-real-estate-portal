@@ -54,6 +54,12 @@ urlpatterns = [
         include("apps.service_providers.urls"),
     ),
 
+    # Plots and their allocation to members
+    path(
+        "api/v1/properties/",
+        include("apps.properties.urls"),
+    ),
+
     # Rented houses and tenants
     path(
         "api/v1/rentals/",

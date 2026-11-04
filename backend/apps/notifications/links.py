@@ -25,3 +25,7 @@ def member(user_id):
 
 def payment(payment_id):
     return f"/payments/{payment_id}"
+
+
+def plot(plot_id):
+    return f"/plots/{plot_id}"

@@ -231,3 +231,34 @@ def payment_status_changed(payment):
         actor=payment.confirmed_by if payment.status == Payment.Status.CONFIRMED else None,
         data={"payment": payment.pk},
     )
+
+
+# ============================================================================
+# PLOTS
+# ============================================================================
+
+def plot_allocated(plot, actor):
+    notify(
+        [plot.allocated_to],
+        T.PLOT_ALLOCATED,
+        title=f"Plot {plot.plot_number} in {plot.estate} is now yours",
+        body=(
+            f"Plot {plot.plot_number} in {plot.estate} has been allocated to "
+            f"you. Price: KES {plot.price:,.2f}."
+        ),
+        link=links.plot(plot.pk),
+        actor=actor,
+        data={"property": plot.pk},
+    )
+
+
+def plot_released(plot, member, actor, reason):
+    notify(
+        [member],
+        T.PLOT_RELEASED,
+        title=f"Plot {plot.plot_number} in {plot.estate} is no longer allocated to you",
+        body=_preview(f"Reason: {reason}", 300),
+        link=links.ACCOUNT,
+        actor=actor,
+        data={"property": plot.pk},
+    )
