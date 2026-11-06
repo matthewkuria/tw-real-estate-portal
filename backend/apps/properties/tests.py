@@ -171,10 +171,10 @@ class AllocateTests(PlotTestCase):
             response = self.allocate(member=user, waive_deposit=True, notes="x")
             self.assertEqual(response.data["code"], "E021", user.email)
 
-    def test_only_admins_allocate_and_release(self):
+    def test_only_admins_and_managers_allocate_and_release(self):
         self.pay("200000")
 
-        for user in (self.manager, self.finance, self.member):
+        for user in (self.finance, self.member):
             self.client.force_authenticate(user)
             self.assertEqual(self.allocate().status_code, status.HTTP_403_FORBIDDEN)
             self.assertEqual(
@@ -185,6 +185,67 @@ class AllocateTests(PlotTestCase):
         super_admin = make_user("root@example.com", User.Role.SUPER_ADMIN)
         self.client.force_authenticate(super_admin)
         self.assertEqual(self.allocate().status_code, status.HTTP_200_OK)
+
+    def test_manager_allocates_and_releases(self):
+        self.pay("200000")
+        self.client.force_authenticate(self.manager)
+
+        response = self.allocate()
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(PlotAllocation.objects.get().allocated_by, self.manager)
+
+        response = self.client.post(self.url("release"), {"reason": "Withdrew"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(PlotAllocation.objects.get().released_by, self.manager)
+
+        # Allocating doesn't let managers edit or add plots.
+        self.assertEqual(
+            self.client.post(
+                self.list_url,
+                {"estate": self.oak.pk, "plot_number": "99", "price": "10", "required_deposit": "5"},
+                format="json",
+            ).status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+
+
+class ExistingOwnerTests(PlotTestCase):
+    """
+    Plots owned before the portal have no price or deposit, and are
+    allocated without any payment.
+    """
+
+    def test_plot_can_be_added_without_price_or_deposit(self):
+        response = self.client.post(
+            self.list_url, {"estate": self.oak.pk, "plot_number": "40"}, format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIsNone(response.data["data"]["price"])
+        self.assertIsNone(response.data["data"]["required_deposit"])
+
+    def test_allocates_without_payment_when_no_deposit_is_set(self):
+        plot = Property.objects.create(estate=self.oak, plot_number="41")
+
+        response = self.allocate(plot=plot)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(response.data["data"]["balance"])
+        record = PlotAllocation.objects.get()
+        self.assertFalse(record.deposit_waived)
+        self.assertEqual(record.deposit_paid, Decimal("0"))
+
+    def test_deposit_still_checked_when_set(self):
+        self.assertEqual(self.allocate().status_code, status.HTTP_409_CONFLICT)
+
+    def test_deposit_still_cant_exceed_a_price(self):
+        response = self.client.post(
+            self.list_url,
+            {"estate": self.oak.pk, "plot_number": "42", "price": "100", "required_deposit": "200"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
 class ReleaseTests(PlotTestCase):

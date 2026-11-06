@@ -1,43 +1,56 @@
+from rest_framework.permissions import BasePermission
 
-from rest_framework.permissions import BasePermission, SAFE_METHODS
+from apps.accounts.models import User
 
 
-STAFF_PAYMENT_ROLES = {
-    "SUPER_ADMIN",
-    "ADMIN",
-    "Manager",
-    "FINANCE_OFFICER",
+# Record payments for any member and see every payment.
+RECORDER_ROLES = {
+    User.Role.SUPER_ADMIN,
+    User.Role.ADMIN,
+    User.Role.MANAGER,
+    User.Role.FINANCE_OFFICER,
+}
+
+# Confirm, reject and reverse payments.
+APPROVER_ROLES = {
+    User.Role.SUPER_ADMIN,
+    User.Role.ADMIN,
+    User.Role.FINANCE_OFFICER,
 }
 
 
-class PaymentPermission(BasePermission):
+def is_recorder(user):
+    return user.is_authenticated and user.role in RECORDER_ROLES
+
+
+def is_approver(user):
+    return user.is_authenticated and user.role in APPROVER_ROLES
+
+
+class CanUsePayments(BasePermission):
     """
-    Staff can manage payments.
-    Members can read only their own payments.
+    Staff who record payments, and members, who see and submit their own.
     """
+
+    message = "You don't have access to payments."
 
     def has_permission(self, request, view):
         user = request.user
 
-        if not user or not user.is_authenticated:
-            return False
-
-        if user.role in STAFF_PAYMENT_ROLES:
-            return True
-
-        if user.role == "MEMBER" and request.method in SAFE_METHODS:
-            return True
-
-        return False
-
-    def has_object_permission(self, request, view, obj):
-        user = request.user
-
-        if user.role in STAFF_PAYMENT_ROLES:
-            return True
-
-        return (
-            user.role == "MEMBER"
-            and request.method in SAFE_METHODS
-            and obj.member_id == user.id
+        return user.is_authenticated and (
+            user.role in RECORDER_ROLES or user.role == User.Role.MEMBER
         )
+
+
+class CanEditPayments(BasePermission):
+    message = "Only staff can edit payments."
+
+    def has_permission(self, request, view):
+        return is_recorder(request.user)
+
+
+class CanApprovePayments(BasePermission):
+    message = "Only Super Admins, Admins and Finance Officers can confirm, reject or reverse payments."
+
+    def has_permission(self, request, view):
+        return is_approver(request.user)

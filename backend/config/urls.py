@@ -54,10 +54,22 @@ urlpatterns = [
         include("apps.service_providers.urls"),
     ),
 
+    # Estates (read-only; managed in the Django admin)
+    path(
+        "api/v1/estates/",
+        include("apps.estates.urls"),
+    ),
+
     # Plots and their allocation to members
     path(
         "api/v1/properties/",
         include("apps.properties.urls"),
+    ),
+
+    # Payments toward estates and plots
+    path(
+        "api/v1/payments/",
+        include("apps.payments.urls"),
     ),
 
     # Rented houses and tenants

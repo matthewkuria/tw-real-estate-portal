@@ -46,8 +46,13 @@ class PlotSerializer(serializers.ModelSerializer):
             "updated_at",
         )
         extra_kwargs = {
-            "price": {"min_value": 1},
-            "required_deposit": {"min_value": 1},
+            "price": {"min_value": 1, "required": False, "allow_null": True},
+            "required_deposit": {
+                "min_value": 1,
+                "required": False,
+                "allow_null": True,
+                "help_text": "Leave out for plots owned before the portal; allocation then needs no payment.",
+            },
         }
         # Plot numbers are checked in validate(), ignoring case.
         validators = []
@@ -62,7 +67,8 @@ class PlotSerializer(serializers.ModelSerializer):
         return str(obj.amount_paid)
 
     def get_balance(self, obj) -> str | None:
-        if obj.allocated_to_id is None:
+        # No price recorded (e.g. a plot owned before the portal): no balance
+        if obj.allocated_to_id is None or obj.price is None:
             return None
 
         return str(max(obj.price - obj.amount_paid, 0))
@@ -77,6 +83,9 @@ class PlotSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"estate": "A plot can't be moved to another estate."}
             )
+
+        if self.instance is None and estate is not None and not estate.is_active:
+            raise serializers.ValidationError({"estate": "This estate isn't active."})
 
         if "plot_number" in attrs:
             number = attrs["plot_number"] = attrs["plot_number"].strip()

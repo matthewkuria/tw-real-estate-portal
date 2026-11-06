@@ -243,8 +243,8 @@ def plot_allocated(plot, actor):
         T.PLOT_ALLOCATED,
         title=f"Plot {plot.plot_number} in {plot.estate} is now yours",
         body=(
-            f"Plot {plot.plot_number} in {plot.estate} has been allocated to "
-            f"you. Price: KES {plot.price:,.2f}."
+            f"Plot {plot.plot_number} in {plot.estate} has been allocated to you."
+            + (f" Price: KES {plot.price:,.2f}." if plot.price is not None else "")
         ),
         link=links.plot(plot.pk),
         actor=actor,

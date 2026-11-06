@@ -58,6 +58,10 @@ def check_allocation(plot, member, waive_deposit=False, notes=""):
 
     paid = deposit_paid(plot.estate_id, member, plot.pk)
 
+    # No deposit set (e.g. a plot they already owned): nothing to check
+    if not plot.required_deposit:
+        return paid
+
     if paid < plot.required_deposit:
         if not waive_deposit:
             raise AllocationError(
@@ -93,7 +97,7 @@ def allocate(plot, member, by, notes="", waive_deposit=False):
         allocated_at=now,
         allocated_by=by,
         deposit_paid=paid,
-        deposit_waived=paid < plot.required_deposit,
+        deposit_waived=bool(plot.required_deposit) and paid < plot.required_deposit,
         notes=notes.strip(),
     )
 

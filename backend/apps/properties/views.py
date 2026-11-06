@@ -49,6 +49,19 @@ class CanManagePlots(BasePermission):
         )
 
 
+ALLOCATION_ROLES = PLOT_ADMIN_ROLES | {User.Role.MANAGER}
+
+
+class CanAllocatePlots(BasePermission):
+    message = "Only Super Admins, Admins and Managers can allocate and release plots."
+
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated
+            and request.user.role in ALLOCATION_ROLES
+        )
+
+
 def _int_param(params, name):
     value = params.get(name)
 
@@ -101,7 +114,8 @@ plot_response = envelope("PlotResponse", PlotSerializer())
 class PlotViewSet(EnvelopeListMixin, viewsets.ModelViewSet):
     """
     Plots in the estates and who holds them. Super Admins and Admins add
-    plots and allocate them; other staff read; members see their own.
+    and edit plots; they and Managers allocate and release them; other
+    staff read; members see their own.
     """
 
     serializer_class = PlotSerializer
@@ -113,6 +127,9 @@ class PlotViewSet(EnvelopeListMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == "allocations":
             return [IsStaffRole()]
+
+        if self.action in ("allocate", "release"):
+            return [CanAllocatePlots()]
 
         if self.request.method in SAFE_METHODS:
             return [IsAuthenticated()]
@@ -220,7 +237,7 @@ class PlotViewSet(EnvelopeListMixin, viewsets.ModelViewSet):
     @extend_schema(
         summary="Allocate a plot to a member",
         description=(
-            "The plot must be available and the member active. Their "
+            "Super Admins, Admins and Managers. The plot must be available and the member active. Their "
             "confirmed payments toward the estate must cover the required "
             "deposit, unless `waive_deposit` is set with `notes` explaining "
             "why. Payments they made toward the estate without a plot are "
@@ -251,7 +268,7 @@ class PlotViewSet(EnvelopeListMixin, viewsets.ModelViewSet):
     @extend_schema(
         summary="Release a plot",
         description=(
-            "Takes the plot back from its holder and makes it available. "
+            "Super Admins, Admins and Managers. Takes the plot back from its holder and makes it available. "
             "Their payments stay on record against the plot. The member is "
             "notified."
         ),

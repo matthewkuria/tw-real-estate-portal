@@ -86,6 +86,17 @@ class Payment(models.Model):
     confirmed_at = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True)
 
+    # Who rejected or reversed the payment, when, and why.
+    status_changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="+",
+        null=True,
+        blank=True,
+    )
+    status_changed_at = models.DateTimeField(null=True, blank=True)
+    status_reason = models.TextField(blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

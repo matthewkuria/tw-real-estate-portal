@@ -16,11 +16,15 @@ class Property(models.Model):
     plot_number = models.CharField(max_length=50)
     description = models.TextField(blank=True)
 
-    # Financial terms for this plot
-    price = models.DecimalField(max_digits=12, decimal_places=2)
+    # Financial terms for this plot. Both are optional: plots members
+    # already owned before the portal have none, and are allocated without
+    # any payment. With a deposit set, allocation checks it's been paid.
+    price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     required_deposit = models.DecimalField(
         max_digits=12,
         decimal_places=2,
+        null=True,
+        blank=True,
     )
 
     # A member can own multiple properties
@@ -52,16 +56,18 @@ class Property(models.Model):
                 name="unique_plot_number_per_estate",
             ),
             models.CheckConstraint(
-                condition=models.Q(price__gt=0),
+                condition=models.Q(price__isnull=True) | models.Q(price__gt=0),
                 name="property_price_positive",
             ),
             models.CheckConstraint(
-                condition=models.Q(required_deposit__gt=0),
+                condition=models.Q(required_deposit__isnull=True) | models.Q(required_deposit__gt=0),
                 name="property_deposit_positive",
             ),
             models.CheckConstraint(
-                condition=models.Q(
-                    required_deposit__lte=models.F("price")
+                condition=(
+                    models.Q(required_deposit__isnull=True)
+                    | models.Q(price__isnull=True)
+                    | models.Q(required_deposit__lte=models.F("price"))
                 ),
                 name="property_deposit_not_above_price",
             ),
