@@ -1,3 +1,4 @@
+import importlib.util
 import os
 from datetime import timedelta
 from pathlib import Path
@@ -73,8 +74,6 @@ if not DEBUG:
 # Application definition
 
 INSTALLED_APPS = [
-    # Must come before staticfiles so runserver serves ASGI (WebSockets).
-    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -103,6 +102,12 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'drf_spectacular',
 ]
+
+# Daphne makes runserver serve ASGI (WebSockets) and must come before
+# staticfiles. It's optional so WSGI-only hosts (e.g. PythonAnywhere,
+# requirements-pythonanywhere.txt) can skip it and its dependencies.
+if importlib.util.find_spec("daphne"):
+    INSTALLED_APPS.insert(0, 'daphne')
 
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
